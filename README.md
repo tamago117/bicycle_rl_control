@@ -3,10 +3,14 @@
 This repository contains a reinforcement learning-based controller for bicycle balancing and navigation in simulation. The project uses the [Genesis](https://github.com/Genesis-Embodied-AI/Genesis) simulator and implements PPO (Proximal Policy Optimization) for training bicycle control policies.
 
 
-
 ### Installation
 
-At this stage, we have defined the environments. Now, we use the PPO implementation from `rsl-rl` to train the policy. Follow these installation steps:
+At first, install Genesis via PyPI:
+```
+pip install genesis-world
+```
+
+This project use the PPO implementation from `rsl-rl` to train the policy. Follow these installation steps:
 
 ```bash
 # Install rsl_rl.
