@@ -2,6 +2,7 @@
 
 This repository contains a reinforcement learning-based controller for bicycle balancing and navigation in simulation. The project uses the [Genesis](https://github.com/Genesis-Embodied-AI/Genesis) simulator and implements PPO (Proximal Policy Optimization) for training bicycle control policies.
 
+https://github.com/user-attachments/assets/939cacc8-8959-45d2-9751-0381ae742cec
 
 ### Installation
 
