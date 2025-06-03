@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Tuple
 
-from envs.circuit_generator.utils import plot_arrow
+from circuit_env.utils import plot_arrow
 
 def make_csv_paths(csv_file: str, DL=0.1, offset=True) -> np.ndarray:
     """make_csv_paths

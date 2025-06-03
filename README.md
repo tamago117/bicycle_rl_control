@@ -22,13 +22,13 @@ Train the bicycle policy using the `BicycleEnv` environment.
 Run with:
 
 ```bash
-python scripts/bicycle_train.py -e bicycle-policy -B 8192 --max_iterations 3000
+python scripts/position_tracking/bicycle_train.py -e bicycle-policy -B 8192 --max_iterations 3000
 ```
 
 Train with visualization:
 
 ```bash
-python scripts/bicycle_train.py -e bicycle-policy -B 8192 --max_iterations 3000 -v
+python scripts/position_tracking/bicycle_train.py -e bicycle-policy -B 8192 --max_iterations 3000 -v
 ```
 
 ### Evaluation
@@ -38,7 +38,7 @@ Evaluate the trained bicycle policy.
 Run with:
 
 ```bash
-python scripts/bicycle_eval.py -e bicycle-policy --ckpt 3000 --record
+python scripts/position_tracking/bicycle_eval.py -e bicycle-policy --ckpt 3000 --record
 ```
 
 **Note**: If you experience slow performance or encounter other issues 
