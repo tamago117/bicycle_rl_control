@@ -1,0 +1,1 @@
+docker build -t bicycle_rl_control:latest .

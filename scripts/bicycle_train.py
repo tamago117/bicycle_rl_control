@@ -12,6 +12,7 @@ import genesis as gs
 def get_train_cfg(exp_name, max_iterations):
     train_cfg_dict = {
         "algorithm": {
+            "class_name": "PPO",
             "clip_param": 0.2,
             "desired_kl": 0.01,
             "entropy_coef": 0.004,
@@ -31,24 +32,23 @@ def get_train_cfg(exp_name, max_iterations):
             "actor_hidden_dims": [256, 256],
             "critic_hidden_dims": [256, 256],
             "init_noise_std": 1.0,
+            "class_name": "ActorCritic",
         },
         "runner": {
-            "algorithm_class_name": "PPO",
             "checkpoint": -1,
             "experiment_name": exp_name,
             "load_run": -1,
             "log_interval": 1,
             "max_iterations": max_iterations,
-            "num_steps_per_env": 24,
-            "policy_class_name": "ActorCritic",
             "record_interval": -1,
             "resume": False,
             "resume_path": None,
             "run_name": "",
-            "runner_class_name": "runner_class_name",
-            "save_interval": 100,
         },
         "runner_class_name": "OnPolicyRunner",
+        "num_steps_per_env": 24,
+        "save_interval": 100,
+        "empirical_normalization": None,
         "seed": 1,
     }
 
@@ -149,7 +149,11 @@ def main():
         show_viewer=args.vis,
     )
 
+
     runner = OnPolicyRunner(env, train_cfg, log_dir, device="cuda:0")
+
+    train_cfg["algorithm"]["class_name"] = "PPO"
+    train_cfg["policy"]["class_name"] = "ActorCritic"
 
     if args.resume:
         if args.checkpoint == -1:
@@ -165,6 +169,8 @@ def main():
         [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
         open(f"{log_dir}/cfgs.pkl", "wb"),
     )
+
+    
 
     runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=True)
 

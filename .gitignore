@@ -1,7 +1,9 @@
 # output data
 output/
 *.png
-
+*mp4
+logs/
+*.pt
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

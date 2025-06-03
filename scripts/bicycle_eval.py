@@ -11,8 +11,8 @@ import genesis as gs
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
-    parser.add_argument("--ckpt", type=int, default=300)
+    parser.add_argument("-e", "--exp_name", type=str, default="bicycle-policy")
+    parser.add_argument("--ckpt", type=int, default=3000)
     parser.add_argument("--record", action="store_true", default=False)
     args = parser.parse_args()
 
@@ -30,6 +30,8 @@ def main():
     env_cfg["max_visualize_FPS"] = 60
     env_cfg["at_target_threshold"] = 2.0
     env_cfg["episode_length_s"] = 60.0
+    train_cfg["algorithm"]["class_name"] = "PPO"
+    train_cfg["policy"]["class_name"] = "ActorCritic"
 
     env = BicycleEnv(
         num_envs=1,
@@ -39,6 +41,8 @@ def main():
         command_cfg=command_cfg,
         show_viewer=True,
     )
+
+    
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device="cuda:0")
     resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
@@ -54,13 +58,13 @@ def main():
             env.cam.start_recording()
             for _ in range(max_sim_step):
                 actions = policy(obs)
-                obs, _, rews, dones, infos = env.step(actions)
+                obs, rews, dones, infos = env.step(actions)
                 env.cam.render()
             env.cam.stop_recording(save_to_filename="video.mp4", fps=env_cfg["max_visualize_FPS"])
         else:
             for _ in range(max_sim_step):
                 actions = policy(obs)
-                obs, _, rews, dones, infos = env.step(actions)
+                obs, rews, dones, infos = env.step(actions)
 
 
 if __name__ == "__main__":

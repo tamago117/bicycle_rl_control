@@ -4,22 +4,15 @@ This repository contains a reinforcement learning-based controller for bicycle b
 
 https://github.com/user-attachments/assets/939cacc8-8959-45d2-9751-0381ae742cec
 
-### Installation
-
-At first, install Genesis via PyPI:
+## installation
 ```
-pip install genesis-world
+cd bicycle_rl_control
+./docker_build.sh
 ```
 
-This project use the PPO implementation from `rsl-rl` to train the policy. Follow these installation steps:
-
-```bash
-# Install rsl_rl.
-git clone https://github.com/leggedrobotics/rsl_rl
-cd rsl_rl && git checkout v1.0.2 && pip install -e .
-
-# Install tensorboard.
-pip install tensorboard
+### make container
+```
+./docker_run.sh
 ```
 
 ### Training
@@ -29,13 +22,13 @@ Train the bicycle policy using the `BicycleEnv` environment.
 Run with:
 
 ```bash
-python scripts/bicycle_train.py -e bicycle-policy -B 8192 --max_iterations 300
+python scripts/bicycle_train.py -e bicycle-policy -B 8192 --max_iterations 3000
 ```
 
 Train with visualization:
 
 ```bash
-python scripts/bicycle_train.py -e bicycle-policy -B 8192 --max_iterations 300 -v
+python scripts/bicycle_train.py -e bicycle-policy -B 8192 --max_iterations 3000 -v
 ```
 
 ### Evaluation
@@ -45,7 +38,7 @@ Evaluate the trained bicycle policy.
 Run with:
 
 ```bash
-python scripts/bicycle_eval.py -e bicycle-policy --ckpt 300 --record
+python scripts/bicycle_eval.py -e bicycle-policy --ckpt 3000 --record
 ```
 
 **Note**: If you experience slow performance or encounter other issues 

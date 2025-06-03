@@ -76,6 +76,7 @@ class BicycleEnv:
 
         # add plane
         self.scene.add_entity(gs.morphs.Plane())
+        # self.scene.add_entity(gs.morphs.URDF(file="model/plane.urdf", fixed=True))
 
         # add target
         if self.env_cfg["visualize_target"]:
@@ -161,6 +162,7 @@ class BicycleEnv:
         self.last_base_pos = torch.zeros_like(self.base_pos)
 
         self.extras = dict()  # extra information for logging
+        self.extras["observations"] = dict()
 
     def _resample_commands(self, envs_idx):
         """
@@ -277,8 +279,9 @@ class BicycleEnv:
         )
 
         self.last_actions[:] = self.actions[:]
+        self.extras["observations"]["critic"] = self.obs_buf
 
-        return self.obs_buf, None, self.rew_buf, self.reset_buf, self.extras
+        return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
 
     def get_observations(self):
         """
@@ -287,7 +290,9 @@ class BicycleEnv:
         Returns:
             obs (torch.Tensor): observations
         """
-        return self.obs_buf
+        self.extras["observations"]["critic"] = self.obs_buf
+
+        return self.obs_buf, self.extras
 
     def get_privileged_observations(self):
         """
