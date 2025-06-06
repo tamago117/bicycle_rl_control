@@ -57,6 +57,31 @@ class BicycleEnv:
         self.obs_scales = obs_cfg["obs_scales"]
         self.reward_scales = reward_cfg["reward_scales"]
 
+        # パスの可視化用の設定
+        self.path_visualization = {
+            "side_line": {  # 左右の線の共通設定
+                "radius": 0.1,
+                "colors": {
+                    "right": (0.0, 1.0, 0.0, 1.0),  # 緑色
+                    "left": (0.0, 1.0, 0.0, 1.0),   # 緑色
+                }
+            },
+            "direction_arrow": {
+                "radius": 0.3,
+                "color": (0.0, 0.0, 1.0, 1.0),  # 青色
+                "interval": 40,  # 矢印の間隔（パス長の1/20）
+            },
+            "target_point": {
+                "radius": 0.2,  # 目標点の大きさ
+                "color": (1.0, 0.0, 0.0, 1.0),  # 赤色
+            },
+            "target_line": {
+                "radius": 0.08,
+                "length": 20.0,
+                "color": (1.0, 0.0, 0.0, 1.0),  # 赤色
+            }
+        }
+
         # create scene
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
@@ -98,14 +123,14 @@ class BicycleEnv:
             # 二輪車から目標点までの線を描画するためのCylinder
             self.target_line = self.scene.add_entity(
                 morph=gs.morphs.Cylinder(
-                    radius=0.02,
-                    height=1.0,
+                    radius=self.path_visualization["target_line"]["radius"],
+                    height=self.path_visualization["target_line"]["length"],
                     fixed=True,
                     collision=False,
                 ),
                 surface=gs.surfaces.Rough(
                     diffuse_texture=gs.textures.ColorTexture(
-                        color=(1.0, 1.0, 0.0, 0.5),  # 黄色、半透明
+                        color=self.path_visualization["target_line"]["color"],  # 赤色
                     ),
                 ),
             )
@@ -170,26 +195,6 @@ class BicycleEnv:
 
         # build scene
         self.scene.build(n_envs=num_envs)
-
-        # パスの可視化用の設定
-        self.path_visualization = {
-            "side_line": {  # 左右の線の共通設定
-                "radius": 0.1,
-                "colors": {
-                    "right": (0.0, 1.0, 0.0, 1.0),  # 緑色
-                    "left": (0.0, 1.0, 0.0, 1.0),   # 緑色
-                }
-            },
-            "direction_arrow": {
-                "radius": 0.3,
-                "color": (0.0, 0.0, 1.0, 1.0),  # 青色
-                "interval": 40,  # 矢印の間隔（パス長の1/20）
-            },
-            "target_point": {
-                "radius": 0.2,  # 目標点の大きさ
-                "color": (1.0, 0.0, 0.0, 1.0),  # 赤色
-            }
-        }
 
         # パスの可視化用のエンティティを追加
         if show_viewer and self.use_circuit:
@@ -272,6 +277,96 @@ class BicycleEnv:
         self.extras = dict()  # extra information for logging
         self.extras["observations"] = dict()
 
+    def find_farthest_collision_free_point(self, env_idx, num_samples=35):
+        """
+        車両位置からガイドパス上の最遠の衝突フリー点を探索（遠い方から探索して効率化）
+        """
+        # 車両位置
+        p = self.base_pos[env_idx, :2].cpu().numpy()
+        path = self.circuit_path.cpu().numpy()
+        right = self.right_path.cpu().numpy()
+        left = self.left_path.cpu().numpy()
+
+        # 1. 最近傍点を探す
+        dists = np.linalg.norm(path[:, :2] - p, axis=1)
+        closest_idx = np.argmin(dists)
+
+        # 遠い方から逆順でサンプリング
+        for offset in reversed(range(1, num_samples)):
+            idx = (closest_idx + offset) % len(path)
+            target = path[idx, :2]
+            if not self._line_crosses_side_lines(p, target, right, left, closest_idx=closest_idx, window=30):
+                return path[idx, :3]
+        # すべて衝突する場合は最近傍点
+        return path[closest_idx, :3]
+
+    def _segments_intersect_batch(self, a1, a2, b1s, b2s):
+        # a1, a2: (2,) 車両とtarget
+        # b1s, b2s: (N, 2) 区間の始点・終点
+        A = a1[None, :]  # (1,2)
+        B = a2[None, :]  # (1,2)
+        C = b1s          # (N,2)
+        D = b2s          # (N,2)
+        def ccw(X, Y, Z):
+            # X: (N,2), Y: (N,2), Z: (N,2)
+            return (Z[:,1]-X[:,1])*(Y[:,0]-X[:,0]) > (Y[:,1]-X[:,1])*(Z[:,0]-X[:,0])
+        n = C.shape[0]
+        A_tile = np.tile(A, (n,1))
+        B_tile = np.tile(B, (n,1))
+        print('right_b1s.shape', b1s.shape, 'right_b2s.shape', b2s.shape)
+        print('left_b1s.shape', b1s.shape, 'left_b2s.shape', b2s.shape)
+        return (ccw(A_tile, C, D) != ccw(B_tile, C, D)) & (ccw(A_tile, B_tile, C) != ccw(A_tile, B_tile, D))
+
+    def _line_crosses_side_lines(self, p, target, right, left, closest_idx=None, window=30, avoid_radius=1.5):
+        # right側
+        N_r = len(right)
+        window_r = min(window, N_r-1)
+        half_r = window_r // 2
+        rel_idxs_r = np.arange(-half_r, half_r + (window_r % 2))
+        if closest_idx is None:
+            closest_idx_r = 0
+        else:
+            closest_idx_r = min(closest_idx, N_r-1)
+        idxs_r = np.mod(closest_idx_r + rel_idxs_r, N_r)
+        idxs2_r = np.mod(idxs_r + 1, N_r)
+        right_b1s = right[idxs_r, :2]
+        right_b2s = right[idxs2_r, :2]
+
+        # left側
+        N_l = len(left)
+        window_l = min(window, N_l-1)
+        half_l = window_l // 2
+        rel_idxs_l = np.arange(-half_l, half_l + (window_l % 2))
+        if closest_idx is None:
+            closest_idx_l = 0
+        else:
+            closest_idx_l = min(closest_idx, N_l-1)
+        idxs_l = np.mod(closest_idx_l + rel_idxs_l, N_l)
+        idxs2_l = np.mod(idxs_l + 1, N_l)
+        left_b1s = left[idxs_l, :2]
+        left_b2s = left[idxs2_l, :2]
+
+        # 進行方向ベクトル
+        direction = target - p
+        direction = direction / np.linalg.norm(direction)
+        # 垂直方向ベクトル
+        perp = np.array([-direction[1], direction[0]])
+
+        # 半径分だけ左右に平行移動
+        p_left = p + perp * avoid_radius
+        t_left = target + perp * avoid_radius
+        p_right = p - perp * avoid_radius
+        t_right = target - perp * avoid_radius
+
+        # 3本の線分（中心・左・右）で全て交差しないか判定
+        for b1s, b2s in [(right_b1s, right_b2s), (left_b1s, left_b2s)]:
+            if len(b1s) > 0:
+                if (np.any(self._segments_intersect_batch(p, target, b1s, b2s)) or
+                    np.any(self._segments_intersect_batch(p_left, t_left, b1s, b2s)) or
+                    np.any(self._segments_intersect_batch(p_right, t_right, b1s, b2s))):
+                    return True
+        return False
+
     def _resample_commands(self, envs_idx):
         """
         Resample commands for path following
@@ -280,18 +375,21 @@ class BicycleEnv:
             envs_idx (torch.Tensor): indices of environments
         """
         if self.use_circuit:
-            # レーシングコースの場合はパス上の次の目標点を設定
-            self._update_path_targets(envs_idx)
-            
+            # レーシングコースの場合はパス上の最遠の衝突フリー点を設定
+            for env_idx in envs_idx:
+                target = self.find_farthest_collision_free_point(env_idx)
+                self.commands[env_idx, :3] = torch.tensor(target, device=self.device, dtype=gs.tc_float)
             # 目標点を可視化
             if self.target is not None:
-                target_pos = self.commands[envs_idx, :2].cpu().numpy()  # 最初の環境の目標点
-                # 2次元テンソルとして位置を設定
+                target_pos = self.commands[envs_idx, :2].cpu().numpy()
                 target_pos_3d = np.zeros((len(envs_idx), 3))
                 target_pos_3d[:, :2] = target_pos
-                target_pos_3d[:, 2] = 0.05  # z座標を追加
-                # print(target_pos_3d)
+                target_pos_3d[:, 2] = 0.05
                 self.target.set_pos(target_pos_3d, zero_velocity=True, envs_idx=envs_idx)
+            # 二輪車から目標点までの線を更新
+            if self.target_line is not None:
+                for env_idx in envs_idx:
+                    self._update_target_line(env_idx)
 
     def _update_path_targets(self, envs_idx):
         """
@@ -370,13 +468,17 @@ class BicycleEnv:
             
         return path_deviation, progress_error
 
-    def _update_target_line(self):
-        """二輪車から目標点までの線を更新"""
+    def _update_target_line(self, env_idx):
+        """二輪車から目標点までの線を更新
+        
+        Args:
+            env_idx (int): 更新する環境のインデックス
+        """
         if self.target_line is not None:
             # 二輪車の位置
-            bicycle_pos = self.base_pos[0].cpu().numpy()  # 最初の環境の二輪車の位置
+            bicycle_pos = self.base_pos[env_idx].cpu().numpy()
             # 目標点の位置
-            target_pos = self.commands[0, :2].cpu().numpy()  # 最初の環境の目標点
+            target_pos = self.commands[env_idx, :2].cpu().numpy()
             target_pos_3d = np.append(target_pos, 0.05)  # z座標を追加
 
             # 二点間の距離を計算
@@ -392,22 +494,19 @@ class BicycleEnv:
             if np.linalg.norm(rotation_axis) > 0:
                 rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
                 rotation_angle = np.arccos(np.dot(z_axis, direction))
-                # 回転軸と角度をnumpy配列として渡す（形状を修正）
-                rotation_matrix = gs.utils.geom.axis_angle_to_quat(
-                    np.array([rotation_axis], dtype=np.float32),  # 2次元配列として渡す
-                    np.array([rotation_angle], dtype=np.float32)  # 2次元配列として渡す
-                )
-                # クォータニオンを2次元テンソルとして渡す
-                quat_2d = np.array([[rotation_matrix[0, 0], rotation_matrix[0, 1], rotation_matrix[0, 2], rotation_matrix[0, 3]]], dtype=np.float32)
+                # クォータニオンを直接計算
+                quat_w = np.cos(rotation_angle / 2)
+                quat_xyz = rotation_axis * np.sin(rotation_angle / 2)
+                quat_2d = np.array([[quat_w, quat_xyz[0], quat_xyz[1], quat_xyz[2]]], dtype=np.float32)
             else:
                 # 回転がない場合は単位クォータニオンを使用
                 quat_2d = np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
 
-            # 線の位置と向きを更新
-            self.target_line.set_pos(np.array([bicycle_pos], dtype=np.float32), zero_velocity=True)  # 2次元配列として渡す
+            # 線の位置を更新（中心から端に移動）
+            # 方向ベクトルに沿って距離の半分だけ移動
+            line_pos = bicycle_pos + direction * (self.path_visualization["target_line"]["length"] / 2)
+            self.target_line.set_pos(np.array([line_pos], dtype=np.float32), zero_velocity=True)
             self.target_line.set_quat(quat_2d, zero_velocity=True)
-            # 線の長さを更新
-            self.target_line.set_scale([1.0, 1.0, distance])
 
     def step(self, actions):
         """
@@ -458,8 +557,6 @@ class BicycleEnv:
         if self.use_circuit:
             # すべての環境に対して目標点を更新
             self._resample_commands(torch.arange(self.num_envs, device=self.device))
-            # 二輪車から目標点までの線を更新
-            self._update_target_line()
             
         # resample commands
         envs_idx = self._check_path_progress()
@@ -600,7 +697,7 @@ class BicycleEnv:
             self.path_completed[envs_idx] = False
             
             # スタート地点をパスの最初の点に設定
-            start_idx = torch.randint(0, min(len(self.circuit_path), 10), (len(envs_idx),), device=self.device)
+            start_idx = torch.randint(0, min(len(self.circuit_path), 100), (len(envs_idx),), device=self.device)
             for i, env_idx in enumerate(envs_idx):
                 start_pos = self.circuit_path[start_idx[i], :2]
                 start_angle = self.circuit_path[start_idx[i], 2]
